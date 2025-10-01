@@ -1,0 +1,17 @@
+---
+title: "p8105_hw2_yc4804"
+author: "Yilin Cai"
+date: "2025-10-01"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Problem 1
+
+```{r cars}
+summary(cars)
+```
+
