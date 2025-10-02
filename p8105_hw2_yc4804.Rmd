@@ -11,7 +11,70 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Problem 1
 
-```{r cars}
-summary(cars)
+```{r}
+library(tidyverse)
+library(janitor)
+
+# clean pols-month.csv
+pols <- read_csv("/Users/caiyilin/Desktop/p8105_hw2_yc4804/fivethirtyeight_datasets/pols-month.csv") %>%
+  # split mon into year / month / day
+  separate(mon, into = c("year", "month", "day"), sep = "[-/]") %>%
+  mutate(
+    year  = as.integer(year),
+    month = as.integer(month),
+    month = month.name[month],  # replace number with month name
+    president = if_else(prez_gop == 1, "gop", "dem")  # collapse prez indicators
+  ) %>%
+  select(-day, -prez_gop, -prez_dem) %>%
+  relocate(year, month)
+
+
+
+# clean snp.csv
+snp <- read_csv("fivethirtyeight_datasets/snp.csv") %>%
+  clean_names() %>%
+  # correct split: YEAR / MONTH / DAY
+  separate(date, into = c("year","month","day"), sep = "/", convert = TRUE) %>%
+  mutate(
+    # handle 2-digit years properly
+    year = if_else(year < 100,
+                   if_else(year >= 50, year + 1900, year + 2000),
+                   year),
+    month = factor(month, levels = 1:12, labels = month.name)
+  ) %>%
+  arrange(year, as.integer(month)) %>%
+  relocate(year, month) %>%
+  select(-day)
+
+# unemployment.csv
+
+unemployment <- read_csv("fivethirtyeight_datasets/unemployment.csv") %>%
+  pivot_longer(
+    cols = -Year,
+    names_to = "month",
+    values_to = "unemployment"
+  ) %>%
+  mutate(
+    year = Year,
+    month = str_to_title(month),   # e.g. "Jan" → "Jan", make sure matches month names
+    month = recode(month,
+                   "Jan" = "January", "Feb" = "February", "Mar" = "March",
+                   "Apr" = "April", "May" = "May", "Jun" = "June",
+                   "Jul" = "July", "Aug" = "August", "Sep" = "September",
+                   "Oct" = "October", "Nov" = "November", "Dec" = "December")
+  ) %>%
+  select(year, month, unemployment)
+
+
+
+pols_snp_unemp <- pols %>%
+  left_join(snp, by = c("year", "month")) %>%          # adds S&P 'close'
+  left_join(unemployment, by = c("year", "month")) %>% # adds 'unemployment'
+  arrange(year, match(month, month.name))
+
+view(pols_snp_unemp)
 ```
 
+The pols-month dataset contains monthly counts of governors, senators, and representatives by political party, along with an indicator of whether the sitting president was Republican (gop) or Democrat (dem). The snp dataset reports monthly closing values of the S&P 500 index, spanning 1950 through 2012. The unemployment dataset gives monthly U.S. unemployment percentages, tidied from wide to long format with consistent month names. After merging these three sources by year and month, the resulting dataset has 1571 rows and 11 columns, covering the period from 1947 to 2015. Key variables include year, month, president, congressional counts (gov_gop, sen_dem, etc.), the S&P 500 closing value (close), and the unemployment rate (unemployment). For years before 1950 and after 2012, close is unavailable and appears as missing values, reflecting the coverage limits of the stock market data.
+
+## Problem 2
