@@ -78,3 +78,58 @@ view(pols_snp_unemp)
 The pols-month dataset contains monthly counts of governors, senators, and representatives by political party, along with an indicator of whether the sitting president was Republican (gop) or Democrat (dem). The snp dataset reports monthly closing values of the S&P 500 index, spanning 1950 through 2012. The unemployment dataset gives monthly U.S. unemployment percentages, tidied from wide to long format with consistent month names. After merging these three sources by year and month, the resulting dataset has 1571 rows and 11 columns, covering the period from 1947 to 2015. Key variables include year, month, president, congressional counts (gov_gop, sen_dem, etc.), the S&P 500 closing value (close), and the unemployment rate (unemployment). For years before 1950 and after 2012, close is unavailable and appears as missing values, reflecting the coverage limits of the stock market data.
 
 ## Problem 2
+
+```{r}
+
+
+library(readxl)
+library(dplyr)
+library(lubridate)
+library(janitor)
+
+clean_trash <- function(sheet, wheel) {
+  read_excel("202509 Trash Wheel Collection Data.xlsx", sheet = sheet, skip = 1) %>%
+    clean_names() %>%
+    filter(!is.na(dumpster)) %>%
+    mutate(
+      wheel = wheel,
+      dumpster = as.integer(dumpster),
+      year = as.integer(year),
+      month = as.character(month),
+      date = as.Date(date),
+      sports_balls = if ("sports_balls" %in% names(.))
+        as.integer(round(sports_balls)) else NA_integer_
+    ) %>%
+    select(any_of(c(
+      "wheel","dumpster","date","month","year",
+      "weight_tons","volume_cubic_yards",
+      "plastic_bottles","polystyrene","cigarette_butts",
+      "glass_bottles","plastic_bags","wrappers",
+      "sports_balls","homes_powered"
+    )))
+}
+
+mr   <- clean_trash("Mr. Trash Wheel", "Mr. Trash Wheel")
+prof <- clean_trash("Professor Trash Wheel", "Professor Trash Wheel")
+gwyn <- clean_trash("Gwynns Falls Trash Wheel", "Gwynnda")
+
+trash_all <- bind_rows(mr, prof, gwyn)
+
+n_obs <- nrow(trash_all)
+
+prof_total_weight_tons <- trash_all %>%
+  filter(wheel == "Professor Trash Wheel") %>%
+  summarise(total = sum(weight_tons, na.rm = TRUE)) %>%
+  pull(total)
+
+gwynnda_cigs_june_2022 <- trash_all %>%
+  filter(wheel == "Gwynnda", year(date) == 2022, month(date) == 6) %>%
+  summarise(total = sum(cigarette_butts, na.rm = TRUE)) %>%
+  pull(total)
+
+view(trash_all)
+
+print(trash_all)
+```
+The combined Trash Wheel dataset contains `r n_obs` dumpster-level observations from Mr. Trash Wheel, Professor Trash Wheel, and Gwynnda. Each row represents one dumpster load and includes information such as the date of collection (`date`), the dumpster identifier (`dumpster`), the weight of trash collected in tons (`weight_tons`), and the volume in cubic yards (`volume_cubic_yards`). The dataset also reports counts of specific types of debris, including `plastic_bottles`, `polystyrene`, `cigarette_butts`, and `sports_balls` (rounded to the nearest whole number). Across all available years, Professor Trash Wheel collected a total of `r round(prof_total_weight_tons, 2)` tons of trash. In June 2022 alone, Gwynnda collected `r gwynnda_cigs_june_2022` cigarette butts.
+
