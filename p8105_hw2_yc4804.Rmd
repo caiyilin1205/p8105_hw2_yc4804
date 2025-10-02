@@ -72,7 +72,7 @@ pols_snp_unemp <- pols %>%
   left_join(unemployment, by = c("year", "month")) %>% # adds 'unemployment'
   arrange(year, match(month, month.name))
 
-view(pols_snp_unemp)
+head(pols_snp_unemp)
 ```
 
 The pols-month dataset contains monthly counts of governors, senators, and representatives by political party, along with an indicator of whether the sitting president was Republican (gop) or Democrat (dem). The snp dataset reports monthly closing values of the S&P 500 index, spanning 1950 through 2012. The unemployment dataset gives monthly U.S. unemployment percentages, tidied from wide to long format with consistent month names. After merging these three sources by year and month, the resulting dataset has 1571 rows and 11 columns, covering the period from 1947 to 2015. Key variables include year, month, president, congressional counts (gov_gop, sen_dem, etc.), the S&P 500 closing value (close), and the unemployment rate (unemployment). For years before 1950 and after 2012, close is unavailable and appears as missing values, reflecting the coverage limits of the stock market data.
@@ -82,39 +82,51 @@ The pols-month dataset contains monthly counts of governors, senators, and repre
 ```{r}
 
 
+
 library(readxl)
 library(dplyr)
 library(lubridate)
 library(janitor)
 
 clean_trash <- function(sheet, wheel) {
-  read_excel("202509 Trash Wheel Collection Data.xlsx", sheet = sheet, skip = 1) %>%
+  df <- read_excel("202509 Trash Wheel Collection Data.xlsx", 
+                   sheet = sheet, skip = 1) %>%
     clean_names() %>%
+    select(any_of(c(
+      "dumpster","month","year","date",
+      "weight_tons","volume_cubic_yards",
+      "plastic_bottles","polystyrene","cigarette_butts",
+      "glass_bottles","plastic_bags","wrappers",
+      "sports_balls","homes_powered"
+    ))) %>%
     filter(!is.na(dumpster)) %>%
     mutate(
       wheel = wheel,
       dumpster = as.integer(dumpster),
       year = as.integer(year),
       month = as.character(month),
-      date = as.Date(date),
-      sports_balls = if ("sports_balls" %in% names(.))
-        as.integer(round(sports_balls)) else NA_integer_
-    ) %>%
-    select(any_of(c(
-      "wheel","dumpster","date","month","year",
-      "weight_tons","volume_cubic_yards",
-      "plastic_bottles","polystyrene","cigarette_butts",
-      "glass_bottles","plastic_bags","wrappers",
-      "sports_balls","homes_powered"
-    )))
+      date = as.Date(date)
+    )
+  
+  # If sports_balls missing, add it
+  if (!"sports_balls" %in% names(df)) {
+    df <- df %>% mutate(sports_balls = NA_integer_)
+  } else {
+    df <- df %>% mutate(sports_balls = as.integer(round(sports_balls)))
+  }
+  
+  df
 }
 
+# Apply to each wheel
 mr   <- clean_trash("Mr. Trash Wheel", "Mr. Trash Wheel")
 prof <- clean_trash("Professor Trash Wheel", "Professor Trash Wheel")
 gwyn <- clean_trash("Gwynns Falls Trash Wheel", "Gwynnda")
 
+# Combine
 trash_all <- bind_rows(mr, prof, gwyn)
-
+head(trash_all)
+# Summary values
 n_obs <- nrow(trash_all)
 
 prof_total_weight_tons <- trash_all %>%
@@ -127,9 +139,119 @@ gwynnda_cigs_june_2022 <- trash_all %>%
   summarise(total = sum(cigarette_butts, na.rm = TRUE)) %>%
   pull(total)
 
-view(trash_all)
 
-print(trash_all)
+
+
 ```
 The combined Trash Wheel dataset contains `r n_obs` dumpster-level observations from Mr. Trash Wheel, Professor Trash Wheel, and Gwynnda. Each row represents one dumpster load and includes information such as the date of collection (`date`), the dumpster identifier (`dumpster`), the weight of trash collected in tons (`weight_tons`), and the volume in cubic yards (`volume_cubic_yards`). The dataset also reports counts of specific types of debris, including `plastic_bottles`, `polystyrene`, `cigarette_butts`, and `sports_balls` (rounded to the nearest whole number). Across all available years, Professor Trash Wheel collected a total of `r round(prof_total_weight_tons, 2)` tons of trash. In June 2022 alone, Gwynnda collected `r gwynnda_cigs_june_2022` cigarette butts.
 
+## Problem 3
+```{r}
+
+
+library(lubridate)
+library(tidyverse)
+
+# ---- read the two files ----
+zip_meta <- read_csv("zillow_data/Zip Codes.csv", show_col_types = FALSE)
+zori_raw <- read_csv("zillow_data/Zip_zori_uc_sfrcondomfr_sm_month_NYC.csv", show_col_types = FALSE)
+
+# --- standardize zip codes ---
+zip_clean <- zip_meta %>%
+  mutate(zip = str_pad(as.character(ZipCode), 5, pad = "0")) %>%
+  select(zip, Neighborhood, County, `State FIPS`, `County Code`, `County FIPS`, `File Date`)
+
+zori_clean <- zori_raw %>%
+  mutate(zip = str_pad(as.character(RegionName), 5, pad = "0"))
+
+# --- find rent columns (monthly series) ---
+monthly_cols <- names(zori_raw)[str_detect(names(zori_raw), "^\\d{4}-\\d{2}-\\d{2}$")]
+
+# --- merge and clean ---
+final_dataset <- zori_clean %>%
+  left_join(zip_clean, by = "zip") %>%
+  mutate(
+    # coalesce: keep only one county and one state column
+    county = coalesce(CountyName, County),
+    state  = coalesce(State, StateName)
+  ) %>%
+  select(
+    zip, RegionID, SizeRank, state, City, Metro, county, Neighborhood,
+    `State FIPS`, `County Code`, `County FIPS`, `File Date`,
+    all_of(monthly_cols)
+  ) %>%
+  arrange(zip)
+
+monthly_cols <- names(final_dataset)[str_detect(names(final_dataset), "^\\d{4}-\\d{2}-\\d{2}$")]
+
+# tidy ZIP × month
+final_long <- final_dataset %>%
+  pivot_longer(all_of(monthly_cols), names_to = "date", values_to = "zori_rent") %>%
+  mutate(date = ymd(date)) %>%
+  arrange(zip, date)
+
+# --- check result ---
+head(final_long)
+```
+
+final_long is my final merged dataset.
+
+```{r}
+library(knitr)
+
+# monthly date columns in your wide table
+# basic description
+total_obs  <- nrow(final_long)
+n_zip      <- n_distinct(final_long$zip)
+n_neigh    <- n_distinct(drop_na(final_long, Neighborhood)$Neighborhood)
+
+cat("total observation", total_obs, "\n",
+    "Unique ZIPs:", n_zip, "\n",
+    "Unique neighborhoods (non-missing):", n_neigh, "\n\n")
+
+# ZIPs in zip_meta but not in Zillow (your final_dataset)
+zips_zipfile <- zip_meta %>%
+  transmute(zip = str_pad(as.character(ZipCode), width = 5, side = "left", pad = "0")) %>%
+  distinct(zip) %>%
+  pull()
+
+zips_zillow <- final_dataset %>%
+  distinct(zip) %>%
+  pull()
+
+missing_zips <- setdiff(zips_zipfile, zips_zillow) %>% sort()
+
+cat("ZIPs in ZIP file but not in Zillow (first 15):",
+    paste(head(missing_zips, 15), collapse = ", "), "\n\n")
+```
+Some ZIP codes in the city list don’t appear in Zillow’s dataset because ZORI tracks residential rents only. Several NYC ZIPs are non-residential or non-geographic—for example, 10020 (Rockefeller Center), 10041/10055 (large corporate buildings), and 10008 (PO-box only)—so there’s no normal housing inventory to index. Others are discontinued or historical, like 10048 (former World Trade Center). A few additional ZIPs may be omitted simply because they have too few active rental listings to produce a stable series.
+
+
+```{r}
+# top 10 drop: Jan 2020 -> Jan 2021
+county_to_borough <- c(
+  "Bronx County"    = "Bronx",
+  "Kings County"    = "Brooklyn",
+  "New York County" = "Manhattan",
+  "Queens County"   = "Queens",
+  "Richmond County" = "Staten Island"
+)
+
+jan20 <- final_long %>% filter(date == ymd("2020-01-31")) %>%
+  transmute(zip, borough = recode(county, !!!county_to_borough),
+            Neighborhood, rent_2020_01 = zori_rent)
+
+jan21 <- final_long %>% filter(date == ymd("2021-01-31")) %>%
+  transmute(zip, rent_2021_01 = zori_rent)
+
+top10_drop <- jan20 %>%
+  inner_join(jan21, by = "zip") %>%
+  mutate(change = rent_2021_01 - rent_2020_01) %>%
+  arrange(change) %>%
+  slice_head(n = 10)
+kable(top10_drop, digits = 0,
+      caption = "Largest drop in ZORI rent: Jan 2021 vs Jan 2020 (negative = drop)")
+
+
+```
+The largest year-over-year rent drops are highly concentrated in Manhattan. Every ZIP in the top-10 is a Manhattan ZIP, and the neighborhoods are the most central, office- and amenity-dense areas—Lower Manhattan, Lower East Side, Chelsea/Clinton, Gramercy Park/Murray Hill, and Greenwich Village/Soho. The biggest decline is 10007 (Lower Manhattan), falling from $6,334 to $5,422. Several others show drops of $685–$748 (e.g., 10069, 10009, 10016, 10001, 10002, 10004, 10038, 10012, 10010). This pattern is consistent with early-pandemic dynamics: remote work, shuttered offices, and reduced tourism disproportionately hit expensive, core Manhattan markets, while outer-borough ZIPs don’t appear in the steepest-drop list.

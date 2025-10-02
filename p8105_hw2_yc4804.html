@@ -450,7 +450,17 @@ unemployment &lt;- read_csv(&quot;fivethirtyeight_datasets/unemployment.csv&quot
   left_join(unemployment, by = c(&quot;year&quot;, &quot;month&quot;)) %&gt;% # adds &#39;unemployment&#39;
   arrange(year, match(month, month.name))
 
-view(pols_snp_unemp)</code></pre>
+head(pols_snp_unemp)</code></pre>
+<pre><code>## # A tibble: 6 × 11
+##    year month    gov_gop sen_gop rep_gop gov_dem sen_dem rep_dem president close
+##   &lt;dbl&gt; &lt;chr&gt;      &lt;dbl&gt;   &lt;dbl&gt;   &lt;dbl&gt;   &lt;dbl&gt;   &lt;dbl&gt;   &lt;dbl&gt; &lt;chr&gt;     &lt;dbl&gt;
+## 1  1947 January       23      51     253      23      45     198 dem          NA
+## 2  1947 February      23      51     253      23      45     198 dem          NA
+## 3  1947 March         23      51     253      23      45     198 dem          NA
+## 4  1947 April         23      51     253      23      45     198 dem          NA
+## 5  1947 May           23      51     253      23      45     198 dem          NA
+## 6  1947 June          23      51     253      23      45     198 dem          NA
+## # ℹ 1 more variable: unemployment &lt;dbl&gt;</code></pre>
 <p>The pols-month dataset contains monthly counts of governors,
 senators, and representatives by political party, along with an
 indicator of whether the sitting president was Republican (gop) or
@@ -474,27 +484,36 @@ library(lubridate)
 library(janitor)
 
 clean_trash &lt;- function(sheet, wheel) {
-  read_excel(&quot;202509 Trash Wheel Collection Data.xlsx&quot;, sheet = sheet, skip = 1) %&gt;%
+  df &lt;- read_excel(&quot;202509 Trash Wheel Collection Data.xlsx&quot;, 
+                   sheet = sheet, skip = 1) %&gt;%
     clean_names() %&gt;%
+    select(any_of(c(
+      &quot;dumpster&quot;,&quot;month&quot;,&quot;year&quot;,&quot;date&quot;,
+      &quot;weight_tons&quot;,&quot;volume_cubic_yards&quot;,
+      &quot;plastic_bottles&quot;,&quot;polystyrene&quot;,&quot;cigarette_butts&quot;,
+      &quot;glass_bottles&quot;,&quot;plastic_bags&quot;,&quot;wrappers&quot;,
+      &quot;sports_balls&quot;,&quot;homes_powered&quot;
+    ))) %&gt;%
     filter(!is.na(dumpster)) %&gt;%
     mutate(
       wheel = wheel,
       dumpster = as.integer(dumpster),
       year = as.integer(year),
       month = as.character(month),
-      date = as.Date(date),
-      sports_balls = if (&quot;sports_balls&quot; %in% names(.))
-        as.integer(round(sports_balls)) else NA_integer_
-    ) %&gt;%
-    select(any_of(c(
-      &quot;wheel&quot;,&quot;dumpster&quot;,&quot;date&quot;,&quot;month&quot;,&quot;year&quot;,
-      &quot;weight_tons&quot;,&quot;volume_cubic_yards&quot;,
-      &quot;plastic_bottles&quot;,&quot;polystyrene&quot;,&quot;cigarette_butts&quot;,
-      &quot;glass_bottles&quot;,&quot;plastic_bags&quot;,&quot;wrappers&quot;,
-      &quot;sports_balls&quot;,&quot;homes_powered&quot;
-    )))
+      date = as.Date(date)
+    )
+  
+  # If sports_balls missing, add it
+  if (!&quot;sports_balls&quot; %in% names(df)) {
+    df &lt;- df %&gt;% mutate(sports_balls = NA_integer_)
+  } else {
+    df &lt;- df %&gt;% mutate(sports_balls = as.integer(round(sports_balls)))
+  }
+  
+  df
 }
 
+# Apply to each wheel
 mr   &lt;- clean_trash(&quot;Mr. Trash Wheel&quot;, &quot;Mr. Trash Wheel&quot;)</code></pre>
 <pre><code>## New names:
 ## • `` -&gt; `...15`
@@ -502,8 +521,22 @@ mr   &lt;- clean_trash(&quot;Mr. Trash Wheel&quot;, &quot;Mr. Trash Wheel&quot;)
 <pre class="r"><code>prof &lt;- clean_trash(&quot;Professor Trash Wheel&quot;, &quot;Professor Trash Wheel&quot;)
 gwyn &lt;- clean_trash(&quot;Gwynns Falls Trash Wheel&quot;, &quot;Gwynnda&quot;)
 
+# Combine
 trash_all &lt;- bind_rows(mr, prof, gwyn)
-
+head(trash_all)</code></pre>
+<pre><code>## # A tibble: 6 × 15
+##   dumpster month  year date       weight_tons volume_cubic_yards plastic_bottles
+##      &lt;int&gt; &lt;chr&gt; &lt;int&gt; &lt;date&gt;           &lt;dbl&gt;              &lt;dbl&gt;           &lt;dbl&gt;
+## 1        1 May    2014 2014-05-16        4.31                 18            1450
+## 2        2 May    2014 2014-05-16        2.74                 13            1120
+## 3        3 May    2014 2014-05-16        3.45                 15            2450
+## 4        4 May    2014 2014-05-17        3.1                  15            2380
+## 5        5 May    2014 2014-05-17        4.06                 18             980
+## 6        6 May    2014 2014-05-20        2.71                 13            1430
+## # ℹ 8 more variables: polystyrene &lt;dbl&gt;, cigarette_butts &lt;dbl&gt;,
+## #   glass_bottles &lt;dbl&gt;, plastic_bags &lt;dbl&gt;, wrappers &lt;dbl&gt;,
+## #   sports_balls &lt;int&gt;, homes_powered &lt;dbl&gt;, wheel &lt;chr&gt;</code></pre>
+<pre class="r"><code># Summary values
 n_obs &lt;- nrow(trash_all)
 
 prof_total_weight_tons &lt;- trash_all %&gt;%
@@ -514,28 +547,7 @@ prof_total_weight_tons &lt;- trash_all %&gt;%
 gwynnda_cigs_june_2022 &lt;- trash_all %&gt;%
   filter(wheel == &quot;Gwynnda&quot;, year(date) == 2022, month(date) == 6) %&gt;%
   summarise(total = sum(cigarette_butts, na.rm = TRUE)) %&gt;%
-  pull(total)
-
-view(trash_all)
-
-print(trash_all)</code></pre>
-<pre><code>## # A tibble: 1,188 × 15
-##    wheel          dumpster date       month  year weight_tons volume_cubic_yards
-##    &lt;chr&gt;             &lt;int&gt; &lt;date&gt;     &lt;chr&gt; &lt;int&gt;       &lt;dbl&gt;              &lt;dbl&gt;
-##  1 Mr. Trash Whe…        1 2014-05-16 May    2014        4.31                 18
-##  2 Mr. Trash Whe…        2 2014-05-16 May    2014        2.74                 13
-##  3 Mr. Trash Whe…        3 2014-05-16 May    2014        3.45                 15
-##  4 Mr. Trash Whe…        4 2014-05-17 May    2014        3.1                  15
-##  5 Mr. Trash Whe…        5 2014-05-17 May    2014        4.06                 18
-##  6 Mr. Trash Whe…        6 2014-05-20 May    2014        2.71                 13
-##  7 Mr. Trash Whe…        7 2014-05-21 May    2014        1.91                  8
-##  8 Mr. Trash Whe…        8 2014-05-28 May    2014        3.7                  16
-##  9 Mr. Trash Whe…        9 2014-06-05 June   2014        2.52                 14
-## 10 Mr. Trash Whe…       10 2014-06-11 June   2014        3.76                 18
-## # ℹ 1,178 more rows
-## # ℹ 8 more variables: plastic_bottles &lt;dbl&gt;, polystyrene &lt;dbl&gt;,
-## #   cigarette_butts &lt;dbl&gt;, glass_bottles &lt;dbl&gt;, plastic_bags &lt;dbl&gt;,
-## #   wrappers &lt;dbl&gt;, sports_balls &lt;int&gt;, homes_powered &lt;dbl&gt;</code></pre>
+  pull(total)</code></pre>
 <p>The combined Trash Wheel dataset contains 1188 dumpster-level
 observations from Mr. Trash Wheel, Professor Trash Wheel, and Gwynnda.
 Each row represents one dumpster load and includes information such as
@@ -549,6 +561,244 @@ specific types of debris, including <code>plastic_bottles</code>,
 all available years, Professor Trash Wheel collected a total of 282.26
 tons of trash. In June 2022 alone, Gwynnda collected 1.812^{4} cigarette
 butts.</p>
+</div>
+<div id="problem-3" class="section level2">
+<h2>Problem 3</h2>
+<pre class="r"><code>library(lubridate)
+library(tidyverse)
+
+# ---- read the two files ----
+zip_meta &lt;- read_csv(&quot;zillow_data/Zip Codes.csv&quot;, show_col_types = FALSE)
+zori_raw &lt;- read_csv(&quot;zillow_data/Zip_zori_uc_sfrcondomfr_sm_month_NYC.csv&quot;, show_col_types = FALSE)
+
+# --- standardize zip codes ---
+zip_clean &lt;- zip_meta %&gt;%
+  mutate(zip = str_pad(as.character(ZipCode), 5, pad = &quot;0&quot;)) %&gt;%
+  select(zip, Neighborhood, County, `State FIPS`, `County Code`, `County FIPS`, `File Date`)
+
+zori_clean &lt;- zori_raw %&gt;%
+  mutate(zip = str_pad(as.character(RegionName), 5, pad = &quot;0&quot;))
+
+# --- find rent columns (monthly series) ---
+monthly_cols &lt;- names(zori_raw)[str_detect(names(zori_raw), &quot;^\\d{4}-\\d{2}-\\d{2}$&quot;)]
+
+# --- merge and clean ---
+final_dataset &lt;- zori_clean %&gt;%
+  left_join(zip_clean, by = &quot;zip&quot;) %&gt;%
+  mutate(
+    # coalesce: keep only one county and one state column
+    county = coalesce(CountyName, County),
+    state  = coalesce(State, StateName)
+  ) %&gt;%
+  select(
+    zip, RegionID, SizeRank, state, City, Metro, county, Neighborhood,
+    `State FIPS`, `County Code`, `County FIPS`, `File Date`,
+    all_of(monthly_cols)
+  ) %&gt;%
+  arrange(zip)
+
+monthly_cols &lt;- names(final_dataset)[str_detect(names(final_dataset), &quot;^\\d{4}-\\d{2}-\\d{2}$&quot;)]
+
+# tidy ZIP × month
+final_long &lt;- final_dataset %&gt;%
+  pivot_longer(all_of(monthly_cols), names_to = &quot;date&quot;, values_to = &quot;zori_rent&quot;) %&gt;%
+  mutate(date = ymd(date)) %&gt;%
+  arrange(zip, date)
+
+# --- check result ---
+head(final_long)</code></pre>
+<pre><code>## # A tibble: 6 × 14
+##   zip   RegionID SizeRank state City     Metro  county Neighborhood `State FIPS`
+##   &lt;chr&gt;    &lt;dbl&gt;    &lt;dbl&gt; &lt;chr&gt; &lt;chr&gt;    &lt;chr&gt;  &lt;chr&gt;  &lt;chr&gt;               &lt;dbl&gt;
+## 1 10001    61615     4444 NY    New York New Y… New Y… Chelsea and…           36
+## 2 10001    61615     4444 NY    New York New Y… New Y… Chelsea and…           36
+## 3 10001    61615     4444 NY    New York New Y… New Y… Chelsea and…           36
+## 4 10001    61615     4444 NY    New York New Y… New Y… Chelsea and…           36
+## 5 10001    61615     4444 NY    New York New Y… New Y… Chelsea and…           36
+## 6 10001    61615     4444 NY    New York New Y… New Y… Chelsea and…           36
+## # ℹ 5 more variables: `County Code` &lt;chr&gt;, `County FIPS` &lt;dbl&gt;,
+## #   `File Date` &lt;chr&gt;, date &lt;date&gt;, zori_rent &lt;dbl&gt;</code></pre>
+<p>final_long is my final merged dataset.</p>
+<pre class="r"><code>library(knitr)
+
+# monthly date columns in your wide table
+# basic description
+total_obs  &lt;- nrow(final_long)
+n_zip      &lt;- n_distinct(final_long$zip)
+n_neigh    &lt;- n_distinct(drop_na(final_long, Neighborhood)$Neighborhood)
+
+cat(&quot;total observation&quot;, total_obs, &quot;\n&quot;,
+    &quot;Unique ZIPs:&quot;, n_zip, &quot;\n&quot;,
+    &quot;Unique neighborhoods (non-missing):&quot;, n_neigh, &quot;\n\n&quot;)</code></pre>
+<pre><code>## total observation 17516 
+##  Unique ZIPs: 149 
+##  Unique neighborhoods (non-missing): 42</code></pre>
+<pre class="r"><code># ZIPs in zip_meta but not in Zillow (your final_dataset)
+zips_zipfile &lt;- zip_meta %&gt;%
+  transmute(zip = str_pad(as.character(ZipCode), width = 5, side = &quot;left&quot;, pad = &quot;0&quot;)) %&gt;%
+  distinct(zip) %&gt;%
+  pull()
+
+zips_zillow &lt;- final_dataset %&gt;%
+  distinct(zip) %&gt;%
+  pull()
+
+missing_zips &lt;- setdiff(zips_zipfile, zips_zillow) %&gt;% sort()
+
+cat(&quot;ZIPs in ZIP file but not in Zillow (first 15):&quot;,
+    paste(head(missing_zips, 15), collapse = &quot;, &quot;), &quot;\n\n&quot;)</code></pre>
+<pre><code>## ZIPs in ZIP file but not in Zillow (first 15): 10008, 10020, 10041, 10043, 10045, 10047, 10048, 10055, 10072, 10080, 10081, 10082, 10087, 10101, 10102</code></pre>
+<p>Some ZIP codes in the city list don’t appear in Zillow’s dataset
+because ZORI tracks residential rents only. Several NYC ZIPs are
+non-residential or non-geographic—for example, 10020 (Rockefeller
+Center), 10041/10055 (large corporate buildings), and 10008 (PO-box
+only)—so there’s no normal housing inventory to index. Others are
+discontinued or historical, like 10048 (former World Trade Center). A
+few additional ZIPs may be omitted simply because they have too few
+active rental listings to produce a stable series.</p>
+<pre class="r"><code># top 10 drop: Jan 2020 -&gt; Jan 2021
+county_to_borough &lt;- c(
+  &quot;Bronx County&quot;    = &quot;Bronx&quot;,
+  &quot;Kings County&quot;    = &quot;Brooklyn&quot;,
+  &quot;New York County&quot; = &quot;Manhattan&quot;,
+  &quot;Queens County&quot;   = &quot;Queens&quot;,
+  &quot;Richmond County&quot; = &quot;Staten Island&quot;
+)
+
+jan20 &lt;- final_long %&gt;% filter(date == ymd(&quot;2020-01-31&quot;)) %&gt;%
+  transmute(zip, borough = recode(county, !!!county_to_borough),
+            Neighborhood, rent_2020_01 = zori_rent)
+
+jan21 &lt;- final_long %&gt;% filter(date == ymd(&quot;2021-01-31&quot;)) %&gt;%
+  transmute(zip, rent_2021_01 = zori_rent)
+
+top10_drop &lt;- jan20 %&gt;%
+  inner_join(jan21, by = &quot;zip&quot;) %&gt;%
+  mutate(change = rent_2021_01 - rent_2020_01) %&gt;%
+  arrange(change) %&gt;%
+  slice_head(n = 10)</code></pre>
+<pre><code>## Warning in inner_join(., jan21, by = &quot;zip&quot;): Detected an unexpected many-to-many relationship between `x` and `y`.
+## ℹ Row 66 of `x` matches multiple rows in `y`.
+## ℹ Row 66 of `y` matches multiple rows in `x`.
+## ℹ If a many-to-many relationship is expected, set `relationship =
+##   &quot;many-to-many&quot;` to silence this warning.</code></pre>
+<pre class="r"><code>kable(top10_drop, digits = 0,
+      caption = &quot;Largest drop in ZORI rent: Jan 2021 vs Jan 2020 (negative = drop)&quot;)</code></pre>
+<table>
+<caption>Largest drop in ZORI rent: Jan 2021 vs Jan 2020 (negative =
+drop)</caption>
+<colgroup>
+<col width="7%" />
+<col width="12%" />
+<col width="37%" />
+<col width="16%" />
+<col width="16%" />
+<col width="8%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th align="left">zip</th>
+<th align="left">borough</th>
+<th align="left">Neighborhood</th>
+<th align="right">rent_2020_01</th>
+<th align="right">rent_2021_01</th>
+<th align="right">change</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">10007</td>
+<td align="left">Manhattan</td>
+<td align="left">Lower Manhattan</td>
+<td align="right">6334</td>
+<td align="right">5422</td>
+<td align="right">-913</td>
+</tr>
+<tr class="even">
+<td align="left">10069</td>
+<td align="left">Manhattan</td>
+<td align="left">NA</td>
+<td align="right">4623</td>
+<td align="right">3875</td>
+<td align="right">-748</td>
+</tr>
+<tr class="odd">
+<td align="left">10009</td>
+<td align="left">Manhattan</td>
+<td align="left">Lower East Side</td>
+<td align="right">3406</td>
+<td align="right">2692</td>
+<td align="right">-714</td>
+</tr>
+<tr class="even">
+<td align="left">10016</td>
+<td align="left">Manhattan</td>
+<td align="left">Gramercy Park and Murray Hill</td>
+<td align="right">3731</td>
+<td align="right">3019</td>
+<td align="right">-712</td>
+</tr>
+<tr class="odd">
+<td align="left">10001</td>
+<td align="left">Manhattan</td>
+<td align="left">Chelsea and Clinton</td>
+<td align="right">4108</td>
+<td align="right">3398</td>
+<td align="right">-710</td>
+</tr>
+<tr class="even">
+<td align="left">10002</td>
+<td align="left">Manhattan</td>
+<td align="left">Lower East Side</td>
+<td align="right">3645</td>
+<td align="right">2935</td>
+<td align="right">-710</td>
+</tr>
+<tr class="odd">
+<td align="left">10004</td>
+<td align="left">Manhattan</td>
+<td align="left">Lower Manhattan</td>
+<td align="right">3150</td>
+<td align="right">2444</td>
+<td align="right">-706</td>
+</tr>
+<tr class="even">
+<td align="left">10038</td>
+<td align="left">Manhattan</td>
+<td align="left">Lower Manhattan</td>
+<td align="right">3573</td>
+<td align="right">2876</td>
+<td align="right">-698</td>
+</tr>
+<tr class="odd">
+<td align="left">10012</td>
+<td align="left">Manhattan</td>
+<td align="left">Greenwich Village and Soho</td>
+<td align="right">3629</td>
+<td align="right">2942</td>
+<td align="right">-686</td>
+</tr>
+<tr class="even">
+<td align="left">10010</td>
+<td align="left">Manhattan</td>
+<td align="left">Gramercy Park and Murray Hill</td>
+<td align="right">3697</td>
+<td align="right">3012</td>
+<td align="right">-685</td>
+</tr>
+</tbody>
+</table>
+<p>The largest year-over-year rent drops are highly concentrated in
+Manhattan. Every ZIP in the top-10 is a Manhattan ZIP, and the
+neighborhoods are the most central, office- and amenity-dense
+areas—Lower Manhattan, Lower East Side, Chelsea/Clinton, Gramercy
+Park/Murray Hill, and Greenwich Village/Soho. The biggest decline is
+10007 (Lower Manhattan), falling from $6,334 to $5,422. Several others
+show drops of $685–$748 (e.g., 10069, 10009, 10016, 10001, 10002, 10004,
+10038, 10012, 10010). This pattern is consistent with early-pandemic
+dynamics: remote work, shuttered offices, and reduced tourism
+disproportionately hit expensive, core Manhattan markets, while
+outer-borough ZIPs don’t appear in the steepest-drop list.</p>
 </div>
 
 
