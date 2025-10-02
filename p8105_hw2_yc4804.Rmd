@@ -2,7 +2,7 @@
 title: "p8105_hw2_yc4804"
 author: "Yilin Cai"
 date: "2025-10-01"
-output: html_document
+output: github_document
 ---
 
 ```{r setup, include=FALSE}
